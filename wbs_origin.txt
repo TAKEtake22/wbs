@@ -1,0 +1,116 @@
+import openai
+
+openai.api_key = 'your-apikey'
+def gpt(sy_content, us_content):
+    response = openai.ChatCompletion.create(
+    model="gpt-3.5-turbo",
+    messages=[
+            {"role": "system", "content": sy_content},
+            {"role": "user", "content": us_content},
+        ],
+    max_tokens=1000
+    )
+    return response['choices'][0]['message']['content']
+
+def make_new_text(text):
+    split_text = text.split("・")
+    new_t = [s.replace("\n", "") for s in split_text]
+    return new_t
+
+def subdivide_process(new_text, u_instruction2, res, roots):
+    results = []
+    for i in new_text:
+        
+        # 細分化するかの判断材料となる元の要素を入れる
+        roots.append(i)
+
+        # 細分化するための命令
+        subdivision_system_inst = "You look at the final goal, the rough process to achieve the goal, and the process you are currently working on, and then subdivide the process you are currently working on to create a more detailed schedule. The results are always output in bulleted form, and no unnecessary remarks can be made."
+        subdivision_user_inst = f"""
+        最終目標：{u_instruction2}
+        全工程：{res}
+        現在取り組んでいる工程：{i}
+
+        現在取り組んでいるの工程をより細分化して細かな予定にしてください。結果はまとめて箇条書きで出力し、箇条書きの先頭は必ず中点「・」にしてください。
+        例：
+        ・細分化した要素１
+        ・細分化した要素２
+        ・細分化した要素３
+
+        注意点：親子関係や段階的な関連性を持つ項目の形式にしないでください。親を作らないでください。
+        """
+
+        # 細分化
+        res2 = gpt(subdivision_system_inst, subdivision_user_inst)
+        print("res: ", res2)
+        text_list = make_new_text(res2)
+        print("ここまでのルート：")
+        for ir, r in enumerate(roots):
+            print(r)
+            if len(roots)-1 != ir:
+                print("↓")
+
+        # 更に細分化するか判断。
+        y_or_n = input("さらに細分化しますか？")
+
+        # 細分化する場合は再帰処理。
+        if y_or_n == "y":
+            results.append(subdivide_process(text_list, u_instruction2, res2, roots))
+        else:
+            results.append(res2)
+
+        # 現在のiを削除。
+        del roots[-1]
+    return results
+    
+
+def flatten(lst):
+    flat_list = []
+    for item in lst:
+        if isinstance(item, list):
+            flat_list.extend(flatten(item))
+        else:
+            flat_list.append(item)
+    return flat_list
+
+
+#ユーザーからの入力
+
+test_or_not = input("テストモードですか？（y/n）")
+u_instruction = "まだ何もしてない"
+u_instruction2 = "本棚の整理"
+if test_or_not != "y" and test_or_not != "Y":
+    u_instruction = input("現在の状況を入力してください：")
+    u_instruction2 = input("目標を入力してください：")
+
+
+
+#最初の命令の入力
+enter_sytem_instruction = "You can compare your current location with your goals and guide the necessary appointments along the way. It outputs according to the user's instructions and does not make any unnecessary remarks. Output only the appointments necessary for the process in bulleted form. All bullet points should be in the middle."
+enter_user_instruction = f"現在の状況：{u_instruction}。目標：{u_instruction2}。目標を達成するために必要な工程を書いて出力してください。箇条書きの始まりには必ず「・」を入れてください。"
+res = gpt(enter_sytem_instruction, enter_user_instruction)
+
+
+#resが正しい形式か判定
+judge_system_inst = "You are a judgment machine. Determines whether the entered information is as instructed, and returns True if it is correct. Output False if wrong. I cannot speak any other language."
+judge_user_inst = f"""
+【判定基準】
+下記の入力は箇条書きになっているか。すべての箇条書きは中点「・」で始まっているか。箇条書き以外の要素は含まれていないか
+
+【判定する要素】
+{res}
+
+"""
+judge = gpt(judge_system_inst, judge_user_inst)
+
+print("juge:", judge)
+
+
+
+if judge == "True":
+    result = subdivide_process(make_new_text(res), u_instruction2, res, [])
+    result = flatten(result)
+    for i, x in enumerate(result):
+       print(f"やること{i}：{x}")
+else:
+    print("だめー")
